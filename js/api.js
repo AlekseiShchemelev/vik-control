@@ -89,8 +89,8 @@ class API {
 
     // ===== Dictionaries =====
     
-    async getDict(type) {
-        return this._request('getDict', { type });
+    async getDict(type, params = {}) {
+        return this._request('getDict', { type, ...params });
     }
 
     async createDictItem(type, data) {

@@ -727,7 +727,8 @@ async function loadDictionary(type) {
     container.innerHTML = '<div class="loading">Загрузка...</div>';
     
     try {
-        const data = await api.getDict(type);
+        // В админке показываем все записи, включая неактивные
+        const data = await api.getDict(type, { includeInactive: true });
         
         container.innerHTML = data.items.map(item => `
             <div class="admin-list-item">
