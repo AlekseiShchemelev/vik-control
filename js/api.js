@@ -1,18 +1,19 @@
 /**
  * API Client для ВИК Контроль (Google Apps Script Backend)
+ * ВСЕ запросы идут через GET с payload в query string
+ * чтобы полностью избежать CORS preflight
  */
 
 class API {
     constructor() {
         this.baseURL = window.GAS_API_URL || '';
         this.accessToken = localStorage.getItem('accessToken');
-        this.refreshPromise = null;
     }
 
     // ===== Auth =====
     
     async login(username, password) {
-        const response = await this._post('login', { username, password });
+        const response = await this._request('login', { username, password });
         
         if (response.success) {
             this.accessToken = response.accessToken;
@@ -26,7 +27,7 @@ class API {
 
     async logout() {
         try {
-            await this._post('logout', {});
+            await this._request('logout', {});
         } finally {
             this._clearAuth();
         }
@@ -54,83 +55,83 @@ class API {
         const cleanParams = Object.fromEntries(
             Object.entries(params).filter(([_, v]) => v != null && v !== '')
         );
-        return this._get('getRecords', cleanParams);
+        return this._request('getRecords', cleanParams);
     }
 
     async getRecord(id) {
-        return this._get('getRecord', { id });
+        return this._request('getRecord', { id });
     }
 
     async createRecord(data) {
-        return this._post('createRecord', { data });
+        return this._request('createRecord', { data });
     }
 
     async updateRecord(id, data) {
-        return this._post('updateRecord', { id, data });
+        return this._request('updateRecord', { id, data });
     }
 
     async deleteRecord(id) {
-        return this._post('deleteRecord', { id });
+        return this._request('deleteRecord', { id });
     }
 
     async getStats(params = {}) {
-        return this._get('getStats', params);
+        return this._request('getStats', params);
     }
 
     // ===== Dictionaries =====
     
     async getDict(type) {
-        return this._get('getDict', { type });
+        return this._request('getDict', { type });
     }
 
     async createDictItem(type, data) {
-        return this._post('createDictItem', { type, data });
+        return this._request('createDictItem', { type, data });
     }
 
     async updateDictItem(type, id, data) {
-        return this._post('updateDictItem', { type, id, data });
+        return this._request('updateDictItem', { type, id, data });
     }
 
     async deleteDictItem(type, id) {
-        return this._post('deleteDictItem', { type, id });
+        return this._request('deleteDictItem', { type, id });
     }
 
     // ===== Admin =====
     
     async getUsers(params = {}) {
-        return this._get('getUsers', params);
+        return this._request('getUsers', params);
     }
 
     async getUser(id) {
-        return this._get('getUser', { id });
+        return this._request('getUser', { id });
     }
 
     async createUser(data) {
-        return this._post('createUser', { data });
+        return this._request('createUser', { data });
     }
 
     async updateUser(id, data) {
-        return this._post('updateUser', { id, data });
+        return this._request('updateUser', { id, data });
     }
 
     async resetUserPassword(id, newPassword) {
-        return this._post('resetPassword', { id, newPassword });
+        return this._request('resetPassword', { id, newPassword });
     }
 
     async deleteUser(id) {
-        return this._post('deleteUser', { id });
+        return this._request('deleteUser', { id });
     }
 
     async getAudit(params = {}) {
-        return this._get('getAudit', params);
+        return this._request('getAudit', params);
     }
 
     async clearDatabase() {
-        return this._post('clearDatabase', {});
+        return this._request('clearDatabase', {});
     }
 
     async exportCSV() {
-        const url = `${this.baseURL}?action=exportCSV&token=${encodeURIComponent(this.accessToken)}`;
+        const url = `${this.baseURL}?action=exportCSV&token=${encodeURIComponent(this.accessToken || '')}`;
         const response = await fetch(url);
         if (!response.ok) {
             const err = await response.text();
@@ -150,75 +151,60 @@ class API {
 
     async importCSV(file) {
         const text = await file.text();
-        return this._post('importCSV', { csvText: text });
-    }
-
-    // ===== Schema =====
-    
-    async getSchemaTable(table) {
-        return this._get('getSchemaTable', { table });
-    }
-
-    async createField(data) {
-        return this._post('createField', { data });
-    }
-
-    async deleteField(id) {
-        return this._post('deleteField', { id });
-    }
-
-    // ===== Internal =====
-    
-    _buildUrl(action, params = {}) {
-        const query = new URLSearchParams({ action, token: this.accessToken, ...params });
-        return `${this.baseURL}?${query.toString()}`;
-    }
-
-    async _get(action, params = {}) {
-        const url = this._buildUrl(action, params);
-        const response = await fetch(url);
-        const data = await response.json();
-        if (data.error) {
-            if (data.error === 'Unauthorized' || data.error === 'Invalid token') {
-                this._clearAuth();
-                window.location.reload();
-            }
-            throw new Error(data.error);
-        }
-        return data;
-    }
-
-    async _post(action, payload = {}) {
-        const body = { action, token: this.accessToken, ...payload };
-        
+        // POST fallback для больших данных (CSV может не влезть в URL)
+        const body = JSON.stringify({ action: 'importCSV', token: this.accessToken || '', csvText: text });
         try {
-            let response = await fetch(this.baseURL, {
+            const response = await fetch(this.baseURL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-                redirect: 'follow'
+                body: body
             });
-            
             const data = await response.json();
-            
-            if (data.error) {
-                if (data.error === 'Unauthorized' || data.error === 'Invalid token') {
-                    this._clearAuth();
-                    window.location.reload();
-                }
-                throw new Error(data.error);
-            }
-            
+            if (data.error) throw new Error(data.error);
             return data;
         } catch (error) {
-            if (!navigator.onLine && action !== 'logout') {
+            if (!navigator.onLine) {
                 if (offlineQueue && typeof offlineQueue.add === 'function') {
-                    offlineQueue.add({ url: this.baseURL, options: { method: 'POST', body: JSON.stringify(body) } });
+                    offlineQueue.add({ url: this.baseURL, options: { method: 'POST', body: body } });
                 }
                 throw new Error('OFFLINE');
             }
             throw error;
         }
+    }
+
+    // ===== Schema =====
+    
+    async getSchemaTable(table) {
+        return this._request('getSchemaTable', { table });
+    }
+
+    async createField(data) {
+        return this._request('createField', { data });
+    }
+
+    async deleteField(id) {
+        return this._request('deleteField', { id });
+    }
+
+    // ===== Internal =====
+    
+    async _request(action, payload = {}) {
+        const data = { action, token: this.accessToken || '', ...payload };
+        const payloadStr = JSON.stringify(data);
+        const url = `${this.baseURL}?payload=${encodeURIComponent(payloadStr)}`;
+        
+        const response = await fetch(url);
+        const result = await response.json();
+        
+        if (result.error) {
+            if (result.error === 'Unauthorized' || result.error === 'Invalid token') {
+                this._clearAuth();
+                window.location.reload();
+            }
+            throw new Error(result.error);
+        }
+        
+        return result;
     }
 }
 
