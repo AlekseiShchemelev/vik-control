@@ -9,13 +9,22 @@ const API_CACHE = 'vik-api-v1';
 
 // Статические ресурсы для кэширования
 const STATIC_ASSETS = [
-    '/',
-    '/index.html',
-    '/css/styles.css',
-    '/js/api.js',
-    '/js/offline.js',
-    '/js/app.js',
-    '/manifest.json',
+    './',
+    './index.html',
+    './css/styles.css',
+    './js/api.js',
+    './js/offline.js',
+    './js/app.js',
+    './js/config.js',
+    './manifest.json',
+    './icons/icon-72x72.png',
+    './icons/icon-96x96.png',
+    './icons/icon-128x128.png',
+    './icons/icon-144x144.png',
+    './icons/icon-152x152.png',
+    './icons/icon-192x192.png',
+    './icons/icon-384x384.png',
+    './icons/icon-512x512.png',
 ];
 
 // Установка - кэшируем статику
@@ -55,19 +64,25 @@ self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = new URL(request.url);
     
-    // API запросы - Network First с fallback
-    if (url.pathname.startsWith('/api/')) {
+    // API запросы (Google Apps Script) - Network First с fallback
+    if (url.hostname.includes('script.google.com')) {
         event.respondWith(handleAPIRequest(request));
         return;
     }
     
-    // Статика - Cache First
+    // HTML-страницы - всегда сначала сеть, чтобы получать обновления
+    if (request.mode === 'navigate' || request.destination === 'document') {
+        event.respondWith(handleNetworkFirst(request));
+        return;
+    }
+    
+    // Статика (CSS, JS, иконки) - Cache First
     if (request.method === 'GET') {
-        event.respondWith(handleStaticRequest(request));
+        event.respondWith(handleCacheFirst(request));
     }
 });
 
-async function handleStaticRequest(request) {
+async function handleCacheFirst(request) {
     const cache = await caches.open(STATIC_CACHE);
     
     // Пробуем взять из кэша
@@ -91,11 +106,29 @@ async function handleStaticRequest(request) {
         }
         return response;
     } catch (err) {
-        // Fallback для навигации
-        if (request.mode === 'navigate') {
-            return cache.match('/index.html');
-        }
         throw err;
+    }
+}
+
+async function handleNetworkFirst(request) {
+    const cache = await caches.open(STATIC_CACHE);
+    
+    try {
+        // Сначала пробуем сеть
+        const networkResponse = await fetch(request);
+        if (networkResponse.ok) {
+            // Обновляем кэш
+            cache.put(request, networkResponse.clone());
+        }
+        return networkResponse;
+    } catch (err) {
+        // Офлайн - берём из кэша
+        const cached = await cache.match(request);
+        if (cached) {
+            return cached;
+        }
+        // Fallback
+        return cache.match('./index.html');
     }
 }
 
@@ -227,8 +260,8 @@ self.addEventListener('push', (event) => {
     event.waitUntil(
         self.registration.showNotification(data.title || 'ВИК Контроль', {
             body: data.body || 'Новое уведомление',
-            icon: '/icons/icon-192x192.png',
-            badge: '/icons/icon-72x72.png',
+            icon: './icons/icon-192x192.png',
+            badge: './icons/icon-72x72.png',
             data: data.data || {},
         })
     );
@@ -239,6 +272,6 @@ self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     
     event.waitUntil(
-        self.clients.openWindow('/')
+        self.clients.openWindow('./')
     );
 });

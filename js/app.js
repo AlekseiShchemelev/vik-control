@@ -82,7 +82,8 @@ function cacheElements() {
     elements.loginForm = document.getElementById('login-form');
     elements.loginError = document.getElementById('login-error');
     
-    // User
+    // Header & User
+    elements.appHeader = document.getElementById('app-header');
     elements.userName = document.getElementById('user-name');
     elements.logoutBtn = document.getElementById('logout-btn');
     
@@ -200,6 +201,7 @@ async function handleLogin(e) {
 async function handleLogout() {
     await api.logout();
     state.currentUser = null;
+    elements.userName.textContent = '';
     // Hide admin buttons on logout
     elements.nav.admin?.classList.add('hidden');
     document.getElementById('header-admin-btn')?.classList.add('hidden');
@@ -209,8 +211,8 @@ async function handleLogout() {
 // ===== App Init =====
 
 async function initApp() {
-    // Update UI
-    elements.userName.textContent = state.currentUser.fullName || state.currentUser.username;
+    // Update UI - показываем логин вместо ФИО
+    elements.userName.textContent = state.currentUser.username;
     
     // Show navigation buttons (ensure they're visible)
     elements.nav.records?.classList.remove('hidden');
@@ -278,6 +280,15 @@ function populateSelect(select, items) {
 // ===== Navigation & Views =====
 
 function showView(viewName) {
+    // Hide/show header for login view
+    if (elements.appHeader) {
+        if (viewName === 'login') {
+            elements.appHeader.classList.add('hidden');
+        } else {
+            elements.appHeader.classList.remove('hidden');
+        }
+    }
+    
     // Hide all views
     Object.values(elements.views).forEach(el => el?.classList.add('hidden'));
     
