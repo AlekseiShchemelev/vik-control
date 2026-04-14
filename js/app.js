@@ -89,6 +89,8 @@ function cacheElements() {
     // Login
     elements.loginForm = document.getElementById('login-form');
     elements.loginError = document.getElementById('login-error');
+    elements.loginSubmitBtn = document.getElementById('login-submit-btn');
+    elements.loginUsername = document.getElementById('login-username');
     
     // Header, Bottom Nav & User
     elements.appHeader = document.getElementById('app-header');
@@ -150,6 +152,8 @@ function cacheElements() {
 function bindEvents() {
     // Login
     elements.loginForm?.addEventListener('submit', handleLogin);
+    elements.loginUsername?.addEventListener('focus', () => api.warmUp());
+    elements.loginUsername?.addEventListener('input', () => api.warmUp(), { once: true });
     
     // Logout
     elements.logoutBtn?.addEventListener('click', handleLogout);
@@ -200,55 +204,68 @@ async function handleLogin(e) {
     
     elements.loginError.textContent = '';
     
+    if (elements.loginSubmitBtn) {
+        elements.loginSubmitBtn.disabled = true;
+        elements.loginSubmitBtn.textContent = 'Входим...';
+    }
+    
     try {
         const result = await api.login(username, password);
         state.currentUser = result.user;
         await initApp();
     } catch (err) {
         elements.loginError.textContent = err.message || 'Ошибка входа';
+    } finally {
+        if (elements.loginSubmitBtn) {
+            elements.loginSubmitBtn.disabled = false;
+            elements.loginSubmitBtn.textContent = 'Войти';
+        }
     }
 }
 
 async function handleLogout() {
     await api.logout();
     state.currentUser = null;
-    elements.userName.textContent = '';
     sessionStorage.removeItem('vik_dicts');
-    // Hide admin buttons on logout
-    elements.nav.admin?.classList.add('hidden');
-    document.getElementById('header-admin-btn')?.classList.add('hidden');
+    updateAuthUI();
     showView('login');
+}
+
+function updateAuthUI() {
+    if (!state.currentUser) {
+        elements.nav.admin?.classList.add('hidden');
+        document.getElementById('header-admin-btn')?.classList.add('hidden');
+        return;
+    }
+    
+    elements.userName.textContent = state.currentUser.username;
+    elements.nav.records?.classList.remove('hidden');
+    elements.nav.add?.classList.remove('hidden');
+    
+    const isAdmin = String(state.currentUser.role).trim() === 'admin';
+    if (isAdmin) {
+        elements.nav.admin?.classList.remove('hidden');
+        document.getElementById('header-admin-btn')?.classList.remove('hidden');
+    } else {
+        elements.nav.admin?.classList.add('hidden');
+        document.getElementById('header-admin-btn')?.classList.add('hidden');
+    }
 }
 
 // ===== App Init =====
 
 async function initApp() {
-    // Update UI - показываем логин вместо ФИО
-    elements.userName.textContent = state.currentUser.username;
+    // Сначала обновляем UI авторизации - это критично и не должно падать
+    updateAuthUI();
     
-    // Show navigation buttons (ensure they're visible)
-    elements.nav.records?.classList.remove('hidden');
-    elements.nav.add?.classList.remove('hidden');
-    
-    // Show admin buttons only for admins (explicit check)
-    const isAdmin = state.currentUser && String(state.currentUser.role).trim() === 'admin';
-    if (isAdmin) {
-        elements.nav.admin?.classList.remove('hidden');
-        document.getElementById('header-admin-btn')?.classList.remove('hidden');
-    } else {
-        // Hide admin buttons for non-admins
-        elements.nav.admin?.classList.add('hidden');
-        document.getElementById('header-admin-btn')?.classList.add('hidden');
-    }
-    
-    // Load dictionaries
-    await loadDictionaries();
-    
-    // Load records
-    await loadRecords();
-    
-    // Show records view
+    // Показываем записи сразу, не дожидаясь загрузки
     showView('records');
+    
+    // Загружаем справочники и записи параллельно
+    await Promise.all([
+        loadDictionaries(),
+        loadRecords()
+    ]);
 }
 
 async function loadDictionaries() {
@@ -837,8 +854,8 @@ function canDeleteRecord(record) {
     if (String(record.id).startsWith('temp_')) return false;
     // Admin can delete any record
     if (String(state.currentUser.role).trim() === 'admin') return true;
-    // Operator can delete only their own records
-    return record.created_by === state.currentUser.id;
+    // Operator can delete only their own records (== на случай разных типов)
+    return record.created_by == state.currentUser.id;
 }
 
 async function deleteRecord(id) {
