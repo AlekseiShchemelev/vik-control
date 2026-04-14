@@ -111,7 +111,7 @@ class API {
         return this._request('getUsers', params);
     }
 
-    async getUser(id) {
+    async getUserById(id) {
         return this._request('getUser', { id });
     }
 

@@ -1020,7 +1020,7 @@ function showAddUserModal() {
 async function editUser(id) {
     // Загружаем данные пользователя
     try {
-        const { user } = await api.getUser(id);
+        const { user } = await api.getUserById(id);
         
         const modalBody = document.getElementById('modal-body');
         modalBody.innerHTML = `
