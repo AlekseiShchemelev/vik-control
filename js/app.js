@@ -269,24 +269,6 @@ async function initApp() {
 }
 
 async function loadDictionaries() {
-    const cacheKey = 'vik_dicts';
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-        try {
-            const parsed = JSON.parse(cached);
-            state.dictionaries.materials = parsed.materials || [];
-            state.dictionaries.operations = parsed.operations || [];
-            state.dictionaries.defect_types = parsed.defect_types || [];
-            populateSelect(elements.filters.material, state.dictionaries.materials);
-            populateSelect(elements.formFields.material, state.dictionaries.materials);
-            populateSelect(elements.formFields.operation, state.dictionaries.operations);
-            populateSelect(elements.formFields.defectType, state.dictionaries.defect_types);
-            return;
-        } catch (e) {
-            sessionStorage.removeItem(cacheKey);
-        }
-    }
-    
     try {
         const [materials, operations, defectTypes] = await Promise.all([
             api.getDict('materials'),
@@ -303,12 +285,6 @@ async function loadDictionaries() {
         populateSelect(elements.formFields.material, state.dictionaries.materials);
         populateSelect(elements.formFields.operation, state.dictionaries.operations);
         populateSelect(elements.formFields.defectType, state.dictionaries.defect_types);
-        
-        sessionStorage.setItem(cacheKey, JSON.stringify({
-            materials: materials.items,
-            operations: operations.items,
-            defect_types: defectTypes.items
-        }));
     } catch (err) {
         console.error('Failed to load dictionaries:', err);
     }
