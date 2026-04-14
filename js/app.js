@@ -7,7 +7,7 @@ const state = {
     currentUser: null,
     currentView: 'records',
     records: [],
-    pagination: { page: 1, limit: 20, total: 0 },
+    pagination: { page: 1, limit: 10, total: 0 },
     filters: {},
     dictionaries: {
         materials: [],
@@ -202,6 +202,7 @@ async function handleLogout() {
     await api.logout();
     state.currentUser = null;
     elements.userName.textContent = '';
+    sessionStorage.removeItem('vik_dicts');
     // Hide admin buttons on logout
     elements.nav.admin?.classList.add('hidden');
     document.getElementById('header-admin-btn')?.classList.add('hidden');
@@ -240,6 +241,20 @@ async function initApp() {
 }
 
 async function loadDictionaries() {
+    const cacheKey = 'vik_dicts';
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+        const parsed = JSON.parse(cached);
+        state.dictionaries.materials = parsed.materials;
+        state.dictionaries.operations = parsed.operations;
+        state.dictionaries.defect_types = parsed.defect_types;
+        populateSelect(elements.filters.material, state.dictionaries.materials);
+        populateSelect(elements.formFields.material, state.dictionaries.materials);
+        populateSelect(elements.formFields.operation, state.dictionaries.operations);
+        populateSelect(elements.formFields.defectType, state.dictionaries.defect_types);
+        return;
+    }
+    
     try {
         const [materials, operations, defectTypes] = await Promise.all([
             api.getDict('materials'),
@@ -256,6 +271,12 @@ async function loadDictionaries() {
         populateSelect(elements.formFields.material, state.dictionaries.materials);
         populateSelect(elements.formFields.operation, state.dictionaries.operations);
         populateSelect(elements.formFields.defectType, state.dictionaries.defect_types);
+        
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+            materials: materials.items,
+            operations: operations.items,
+            defect_types: defectTypes.items
+        }));
     } catch (err) {
         console.error('Failed to load dictionaries:', err);
     }
@@ -271,7 +292,7 @@ function populateSelect(select, items) {
     
     items.forEach(item => {
         const option = document.createElement('option');
-        option.value = item.id;
+        option.value = item.name;
         option.textContent = item.name;
         select.appendChild(option);
     });
@@ -360,31 +381,25 @@ function renderRecords() {
                 <span class="record-date">${formatDate(record.date)}</span>
             </div>
             <div class="record-body">
-                <div class="record-field">
-                    <span class="record-field-label">Материал</span>
-                    <span class="record-field-value">${escapeHtml(record.material_name || '-')}</span>
+                <div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:4px;">
+                    ${record.material_name ? `<span>📦 ${escapeHtml(record.material_name)}</span>` : ''}
+                    ${record.operation_name ? `<span>⚙️ ${escapeHtml(record.operation_name)}</span>` : ''}
                 </div>
-                <div class="record-field">
-                    <span class="record-field-label">Операция</span>
-                    <span class="record-field-value">${escapeHtml(record.operation_name || '-')}</span>
+                <div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:4px; color:#555;">
+                    ${record.diameter ? `<span>⌀ ${record.diameter} мм</span>` : ''}
+                    ${record.thickness ? `<span>📏 ${record.thickness} мм</span>` : ''}
+                    ${record.bottom_number ? `<span>🔢 днище ${escapeHtml(record.bottom_number)}</span>` : ''}
                 </div>
-                <div class="record-field">
-                    <span class="record-field-label">Диаметр</span>
-                    <span class="record-field-value">${record.diameter || '-'} мм</span>
-                </div>
-                <div class="record-field">
-                    <span class="record-field-label">Толщина</span>
-                    <span class="record-field-value">${record.thickness || '-'} мм</span>
-                </div>
+                ${record.defect_type_name ? `
+                    <div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:6px; color:#c62828;">
+                        <span>⚠️ ${escapeHtml(record.defect_type_name)}</span>
+                        ${record.defect_length ? `<span>📐 ${record.defect_length} мм</span>` : ''}
+                        <span>🔢 ${record.defect_count || 1} шт</span>
+                    </div>
+                ` : ''}
+                ${record.inspector ? `<div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:4px; color:#555;"><span>👤 ${escapeHtml(record.inspector)}</span></div>` : ''}
+                ${record.comments ? `<div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:4px; color:#666; font-style:italic;"><span>💬 ${escapeHtml(record.comments)}</span></div>` : ''}
             </div>
-            ${record.defect_type_name ? `
-                <div class="record-footer">
-                    <span class="record-defect">
-                        ⚠️ ${escapeHtml(record.defect_type_name)}
-                        ${record.defect_count > 1 ? `(${record.defect_count} шт)` : ''}
-                    </span>
-                </div>
-            ` : ''}
         </div>
     `).join('');
 }
@@ -418,7 +433,7 @@ function applyFilters() {
         dateFrom: elements.filters.dateFrom.value,
         dateTo: elements.filters.dateTo.value,
         orderNumber: elements.filters.order.value,
-        materialId: elements.filters.material.value,
+        material: elements.filters.material.value,
     };
     state.pagination.page = 1;
     loadRecords();
@@ -445,23 +460,22 @@ function showRecordForm(record = null) {
     const today = new Date().toISOString().split('T')[0];
     
     // Для новой записи подставляем ФИО текущего пользователя
-    const currentUserName = state.currentUser?.full_name || state.currentUser?.username || '';
-    // Форматируем ФИО: если есть полное имя, берём его, иначе username
+    const currentUserName = state.currentUser?.fullName || state.currentUser?.username || '';
     const inspectorName = record ? (record.inspector || '') : currentUserName;
     
     // Fill form
     elements.formFields.id.value = record?.id || '';
-    elements.formFields.date.value = record?.date || today;  // Новая запись = сегодня
+    elements.formFields.date.value = record?.date || today;
     elements.formFields.order.value = record?.order_number || '';
     elements.formFields.diameter.value = record?.diameter || '';
     elements.formFields.thickness.value = record?.thickness || '';
     elements.formFields.bottom.value = record?.bottom_number || '';
-    elements.formFields.material.value = record?.material_id || '';
-    elements.formFields.operation.value = record?.operation_id || '';
-    elements.formFields.defectType.value = record?.defect_type_id || '';
+    elements.formFields.material.value = record?.material_name || '';
+    elements.formFields.operation.value = record?.operation_name || '';
+    elements.formFields.defectType.value = record?.defect_type_name || '';
     elements.formFields.defectLength.value = record?.defect_length || '';
     elements.formFields.defectCount.value = record?.defect_count || 1;
-    elements.formFields.inspector.value = inspectorName;  // Автоподстановка ФИО
+    elements.formFields.inspector.value = inspectorName;
     elements.formFields.comments.value = record?.comments || '';
     
     // Управление секцией удаления
@@ -499,9 +513,9 @@ async function handleSaveRecord(e) {
         diameter: parseFloat(elements.formFields.diameter.value) || null,
         thickness: parseFloat(elements.formFields.thickness.value) || null,
         bottomNumber: elements.formFields.bottom.value || null,
-        materialId: elements.formFields.material.value || null,
-        operationId: elements.formFields.operation.value || null,
-        defectTypeId: elements.formFields.defectType.value || null,
+        materialName: elements.formFields.material.value || null,
+        operationName: elements.formFields.operation.value || null,
+        defectTypeName: elements.formFields.defectType.value || null,
         defectLength: parseFloat(elements.formFields.defectLength.value) || null,
         defectCount: parseInt(elements.formFields.defectCount.value) || 1,
         inspector: elements.formFields.inspector.value || null,
