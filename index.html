@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1976d2">
+    <meta name="description" content="ВИК Контроль - система учета несоответствий">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="ВИК Контроль">
+    
+    <title>ВИК Контроль</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+    <!-- Offline Indicator -->
+    <div id="offline-indicator" class="offline-indicator hidden">
+        <span>⚠️ Офлайн режим</span>
+    </div>
+    
+    <!-- Sync Indicator -->
+    <div id="sync-indicator" class="sync-indicator hidden">
+        <span>🔄 Синхронизация...</span>
+    </div>
+
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-content">
+            <h1 class="app-title">📋 ВИК Контроль</h1>
+            <div class="header-actions">
+                <span id="user-name" class="user-name"></span>
+                <button id="theme-toggle" class="btn btn-icon" title="Сменить тему">🌙</button>
+                <button id="header-add-btn" class="btn btn-primary hidden-sm" title="Добавить запись">➕ Добавить</button>
+                <button id="header-admin-btn" class="btn btn-secondary hidden" title="Админка">⚙️ Админ</button>
+                <button id="logout-btn" class="btn btn-secondary" title="Выйти">🚪 Выйти</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Login View -->
+        <div id="login-view" class="view hidden">
+            <div class="login-container">
+                <div class="login-card">
+                    <h2>🔐 Вход в систему</h2>
+                    <form id="login-form">
+                        <div class="form-group">
+                            <label for="login-username">Логин</label>
+                            <input type="text" id="login-username" required autocomplete="username">
+                        </div>
+                        <div class="form-group">
+                            <label for="login-password">Пароль</label>
+                            <input type="password" id="login-password" required autocomplete="current-password">
+                        </div>
+                        <div id="login-error" class="error-message"></div>
+                        <button type="submit" class="btn btn-primary btn-block">Войти</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Records List View -->
+        <div id="records-view" class="view">
+            <!-- Filters -->
+            <div class="filters-bar">
+                <div class="filter-group">
+                    <input type="date" id="filter-date-from" placeholder="С">
+                    <input type="date" id="filter-date-to" placeholder="По">
+                </div>
+                <div class="filter-group">
+                    <input type="text" id="filter-order" placeholder="№ заказа">
+                    <select id="filter-material">
+                        <option value="">Все материалы</option>
+                    </select>
+                </div>
+                <button id="apply-filters" class="btn btn-secondary">🔍 Поиск</button>
+                <button id="clear-filters" class="btn btn-secondary">Сброс</button>
+            </div>
+
+            <!-- Stats Summary -->
+            <div id="stats-bar" class="stats-bar">
+                <div class="stat-item">
+                    <span class="stat-label">Всего записей:</span>
+                    <span id="stat-total" class="stat-value">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Дефектов:</span>
+                    <span id="stat-defects" class="stat-value">-</span>
+                </div>
+            </div>
+
+            <!-- Records List -->
+            <div id="records-list" class="records-list">
+                <div class="loading">Загрузка...</div>
+            </div>
+
+            <!-- Pagination -->
+            <div id="pagination" class="pagination">
+                <button id="prev-page" class="btn btn-ghost" disabled>← Назад</button>
+                <span id="page-info">Страница 1</span>
+                <button id="next-page" class="btn btn-ghost" disabled>Вперед →</button>
+            </div>
+        </div>
+
+        <!-- Record Form View -->
+        <div id="record-form-view" class="view hidden">
+            <div class="form-header">
+                <button id="back-to-list" class="btn btn-ghost">← Назад</button>
+                <h2 id="form-title">Новая запись</h2>
+            </div>
+            
+            <form id="record-form" class="record-form">
+                <input type="hidden" id="record-id">
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="rec-date">Дата *</label>
+                        <input type="date" id="rec-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="rec-order">Номер заказа *</label>
+                        <input type="text" id="rec-order" required placeholder="например: 30.8217">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="rec-diameter">Диаметр (мм)</label>
+                        <input type="number" id="rec-diameter" step="0.1" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="rec-thickness">Толщина (мм)</label>
+                        <input type="number" id="rec-thickness" step="0.1" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="rec-bottom">№ днища</label>
+                        <input type="text" id="rec-bottom">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="rec-material">Материал</label>
+                        <select id="rec-material">
+                            <option value="">-- выберите --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="rec-operation">Технологическая операция</label>
+                        <select id="rec-operation">
+                            <option value="">-- выберите --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="rec-defect-type">Вид дефекта</label>
+                        <select id="rec-defect-type">
+                            <option value="">-- выберите --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="rec-defect-length">Протяженность (мм)</label>
+                        <input type="number" id="rec-defect-length" step="0.1" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="rec-defect-count">Количество</label>
+                        <input type="number" id="rec-defect-count" min="1" value="1">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="rec-inspector">Контроль выполнил</label>
+                    <input type="text" id="rec-inspector" placeholder="ФИО">
+                </div>
+
+                <div class="form-group">
+                    <label for="rec-comments">Комментарии</label>
+                    <textarea id="rec-comments" rows="3"></textarea>
+                </div>
+
+                <div id="form-error" class="error-message"></div>
+                
+                <div class="form-actions" style="justify-content: flex-end;">
+                    <button type="button" id="cancel-form" class="btn btn-secondary">Отмена</button>
+                    <button type="submit" class="btn btn-primary">💾 Сохранить</button>
+                </div>
+            </form>
+            
+            <!-- Delete section - separate from form -->
+            <div id="delete-section" class="delete-section hidden">
+                <hr style="margin: 24px 0; border: none; border-top: 1px solid #ddd;">
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px; background: #ffebee; border-radius: 8px;">
+                    <div>
+                        <div style="font-weight: 600; color: #c62828;">⚠️ Опасная зона</div>
+                        <div style="font-size: 14px; color: #666;">Удаление нельзя отменить</div>
+                    </div>
+                    <button type="button" id="delete-record-btn" class="btn btn-danger">🗑️ Удалить запись</button>
+                </div>
+            </div>
+            </form>
+        </div>
+
+        <!-- Admin View -->
+        <div id="admin-view" class="view hidden">
+            <div class="admin-header">
+                <h2>⚙️ Администрирование</h2>
+            </div>
+            
+            <div class="admin-tabs">
+                <button class="admin-tab active" data-tab="users">👤 Пользователи</button>
+                <button class="admin-tab" data-tab="dictionaries">📚 Справочники</button>
+                <button class="admin-tab" data-tab="schema">🗄️ Поля БД</button>
+                <button class="admin-tab" data-tab="audit">📋 Аудит</button>
+            </div>
+
+            <!-- Users Tab -->
+            <div id="admin-users" class="admin-content active">
+                <div class="admin-toolbar" style="flex-wrap: wrap; gap: 8px;">
+                    <button id="add-user-btn" class="btn btn-primary">+ Добавить пользователя</button>
+                    <button id="export-csv-btn" class="btn btn-secondary">📥 Экспорт CSV</button>
+                    <label class="btn btn-secondary" style="cursor: pointer;">
+                        📤 Импорт CSV
+                        <input type="file" id="import-csv-input" accept=".csv" style="display: none;">
+                    </label>
+                    <button id="clear-db-btn" class="btn btn-danger">⚠️ Очистить все записи</button>
+                </div>
+                <div id="users-list" class="admin-list">
+                    <div class="loading">Загрузка пользователей...</div>
+                </div>
+            </div>
+
+            <!-- Dictionaries Tab -->
+            <div id="admin-dictionaries" class="admin-content">
+                <div class="dict-tabs">
+                    <button class="dict-tab active" data-dict="materials">Материалы</button>
+                    <button class="dict-tab" data-dict="operations">Операции</button>
+                    <button class="dict-tab" data-dict="defect_types">Дефекты</button>
+                </div>
+                <div class="admin-toolbar">
+                    <button id="add-dict-item-btn" class="btn btn-primary">+ Добавить</button>
+                </div>
+                <div id="dict-list" class="admin-list"></div>
+            </div>
+
+            <!-- Schema Tab -->
+            <div id="admin-schema" class="admin-content">
+                <div class="admin-toolbar">
+                    <button id="add-field-btn" class="btn btn-primary">+ Добавить поле</button>
+                </div>
+                <div id="schema-list" class="admin-list"></div>
+            </div>
+
+            <!-- Audit Tab -->
+            <div id="admin-audit" class="admin-content">
+                <div class="filter-bar">
+                    <input type="date" id="audit-date-from">
+                    <input type="date" id="audit-date-to">
+                    <button id="audit-filter" class="btn btn-secondary">🔍 Показать</button>
+                </div>
+                <div id="audit-list" class="admin-list audit-list"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Navigation (Mobile) -->
+    <nav class="bottom-nav">
+        <button id="nav-records" class="nav-item active" data-view="records">
+            <span class="nav-icon">📋</span>
+            <span class="nav-label">Записи</span>
+        </button>
+        <button id="nav-add" class="nav-item" data-view="add">
+            <span class="nav-icon">➕</span>
+            <span class="nav-label">Добавить</span>
+        </button>
+        <button id="nav-admin" class="nav-item hidden" data-view="admin">
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-label">Админ</span>
+        </button>
+    </nav>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Modal -->
+    <div id="modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Заголовок</h3>
+                <button id="modal-close" class="btn btn-icon">✕</button>
+            </div>
+            <div id="modal-body" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="./js/config.js"></script>
+    <script src="./js/api.js"></script>
+    <script src="./js/offline.js"></script>
+    <script src="./js/app.js"></script>
+    
+    <!-- Service Worker Registration (отключен в разработке) -->
+    <script>
+        // Проверяем hostname - если это IP адрес или localhost, НЕ регистрируем SW
+        const isLocalDev = location.hostname === 'localhost' || 
+                          location.hostname === '127.0.0.1' ||
+                          /^\d+\.\d+\.\d+\.\d+$/.test(location.hostname);
+        
+        if ('serviceWorker' in navigator && !isLocalDev) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('SW registered:', reg.scope))
+                    .catch(err => console.log('SW registration failed:', err));
+            });
+        } else {
+            console.log('SW skipped - local development mode');
+        }
+    </script>
+</body>
+</html>
