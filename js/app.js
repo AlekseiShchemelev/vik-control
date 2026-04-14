@@ -59,7 +59,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check auth
     if (api.isAuthenticated()) {
         state.currentUser = api.getUser();
-        await initApp();
+        try {
+            await initApp();
+        } catch (err) {
+            console.error('initApp failed:', err);
+            showView('records');
+        }
     } else {
         showView('login');
     }
@@ -85,8 +90,9 @@ function cacheElements() {
     elements.loginForm = document.getElementById('login-form');
     elements.loginError = document.getElementById('login-error');
     
-    // Header & User
+    // Header, Bottom Nav & User
     elements.appHeader = document.getElementById('app-header');
+    elements.bottomNav = document.querySelector('.bottom-nav');
     elements.userName = document.getElementById('user-name');
     elements.logoutBtn = document.getElementById('logout-btn');
     
@@ -157,6 +163,8 @@ function bindEvents() {
     document.getElementById('header-add-btn')?.addEventListener('click', () => showRecordForm());
     document.getElementById('header-admin-btn')?.addEventListener('click', () => showView('admin'));
     document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
+    document.querySelector('.app-title')?.addEventListener('click', () => showView('records'));
+    document.getElementById('admin-back-btn')?.addEventListener('click', () => showView('records'));
     
     // Filters
     elements.filters.apply?.addEventListener('click', applyFilters);
@@ -223,7 +231,7 @@ async function initApp() {
     elements.nav.add?.classList.remove('hidden');
     
     // Show admin buttons only for admins (explicit check)
-    const isAdmin = state.currentUser && state.currentUser.role === 'admin';
+    const isAdmin = state.currentUser && String(state.currentUser.role).trim() === 'admin';
     if (isAdmin) {
         elements.nav.admin?.classList.remove('hidden');
         document.getElementById('header-admin-btn')?.classList.remove('hidden');
@@ -247,15 +255,19 @@ async function loadDictionaries() {
     const cacheKey = 'vik_dicts';
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) {
-        const parsed = JSON.parse(cached);
-        state.dictionaries.materials = parsed.materials;
-        state.dictionaries.operations = parsed.operations;
-        state.dictionaries.defect_types = parsed.defect_types;
-        populateSelect(elements.filters.material, state.dictionaries.materials);
-        populateSelect(elements.formFields.material, state.dictionaries.materials);
-        populateSelect(elements.formFields.operation, state.dictionaries.operations);
-        populateSelect(elements.formFields.defectType, state.dictionaries.defect_types);
-        return;
+        try {
+            const parsed = JSON.parse(cached);
+            state.dictionaries.materials = parsed.materials || [];
+            state.dictionaries.operations = parsed.operations || [];
+            state.dictionaries.defect_types = parsed.defect_types || [];
+            populateSelect(elements.filters.material, state.dictionaries.materials);
+            populateSelect(elements.formFields.material, state.dictionaries.materials);
+            populateSelect(elements.formFields.operation, state.dictionaries.operations);
+            populateSelect(elements.formFields.defectType, state.dictionaries.defect_types);
+            return;
+        } catch (e) {
+            sessionStorage.removeItem(cacheKey);
+        }
     }
     
     try {
@@ -304,12 +316,19 @@ function populateSelect(select, items) {
 // ===== Navigation & Views =====
 
 function showView(viewName) {
-    // Hide/show header for login view
+    // Hide/show header and bottom nav for login view
     if (elements.appHeader) {
         if (viewName === 'login') {
             elements.appHeader.classList.add('hidden');
         } else {
             elements.appHeader.classList.remove('hidden');
+        }
+    }
+    if (elements.bottomNav) {
+        if (viewName === 'login') {
+            elements.bottomNav.classList.add('hidden');
+        } else {
+            elements.bottomNav.classList.remove('hidden');
         }
     }
     
@@ -481,11 +500,11 @@ function showRecordForm(record = null) {
     elements.formFields.inspector.value = inspectorName;
     elements.formFields.comments.value = record?.comments || '';
     
-    // Управление секцией удаления
+    // Управление секцией удаления (скрываем для временных записей)
     const deleteSection = document.getElementById('delete-section');
     const deleteBtn = document.getElementById('delete-record-btn');
     if (deleteSection && deleteBtn) {
-        if (record && canDeleteRecord(record)) {
+        if (record && !String(record.id).startsWith('temp_') && canDeleteRecord(record)) {
             deleteSection.classList.remove('hidden');
             deleteBtn.onclick = () => {
                 deleteRecord(record.id);
@@ -815,13 +834,18 @@ async function loadAudit() {
 // ===== Delete Record Helper =====
 function canDeleteRecord(record) {
     if (!state.currentUser) return false;
+    if (String(record.id).startsWith('temp_')) return false;
     // Admin can delete any record
-    if (state.currentUser.role === 'admin') return true;
+    if (String(state.currentUser.role).trim() === 'admin') return true;
     // Operator can delete only their own records
     return record.created_by === state.currentUser.id;
 }
 
 async function deleteRecord(id) {
+    if (String(id).startsWith('temp_')) {
+        showToast('Запись ещё синхронизируется. Подождите.', 'info');
+        return;
+    }
     if (!confirm('Удалить эту запись?')) return;
     
     try {

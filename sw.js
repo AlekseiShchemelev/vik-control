@@ -4,11 +4,11 @@
  */
 
 const CACHE_NAME = 'vik-control-v1';
-const STATIC_CACHE = 'vik-static-v1';
+const STATIC_CACHE = 'vik-static-v2';
 const API_CACHE = 'vik-api-v1';
 
-// Статические ресурсы для кэширования
-const STATIC_ASSETS = [
+// Критичные ресурсы для кэширования (обязательные для работы приложения)
+const CORE_ASSETS = [
     './',
     './index.html',
     './css/styles.css',
@@ -17,6 +17,10 @@ const STATIC_ASSETS = [
     './js/app.js',
     './js/config.js',
     './manifest.json',
+];
+
+// Дополнительные ресурсы (иконки) - не критичны, кэшируем по возможности
+const ICON_ASSETS = [
     './icons/icon-72x72.png',
     './icons/icon-96x96.png',
     './icons/icon-128x128.png',
@@ -27,17 +31,40 @@ const STATIC_ASSETS = [
     './icons/icon-512x512.png',
 ];
 
-// Установка - кэшируем статику
+// Установка - кэшируем статику пофайлово с игнорированием ошибок
 self.addEventListener('install', (event) => {
     console.log('[SW] Installing...');
     
     event.waitUntil(
         caches.open(STATIC_CACHE)
-            .then(cache => {
-                console.log('[SW] Caching static assets');
-                return cache.addAll(STATIC_ASSETS);
+            .then(async (cache) => {
+                console.log('[SW] Caching static assets individually');
+                
+                // Кэшируем критичные ресурсы
+                for (const url of CORE_ASSETS) {
+                    try {
+                        await cache.add(url);
+                    } catch (err) {
+                        console.error('[SW] Failed to cache:', url, err);
+                    }
+                }
+                
+                // Кэшируем иконки (не критично)
+                for (const url of ICON_ASSETS) {
+                    try {
+                        await cache.add(url);
+                    } catch (err) {
+                        console.warn('[SW] Failed to cache icon:', url);
+                    }
+                }
+                
+                console.log('[SW] Caching complete');
             })
             .then(() => self.skipWaiting())
+            .catch((err) => {
+                console.error('[SW] Install error:', err);
+                self.skipWaiting();
+            })
     );
 });
 
