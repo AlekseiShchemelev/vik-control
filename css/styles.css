@@ -52,6 +52,11 @@
     --shadow-lg: 0 4px 8px rgba(0,0,0,0.4);
 }
 
+[data-theme="dark"] .user-name {
+    opacity: 1;
+    color: #ffffff;
+}
+
 /* ===== Reset & Base ===== */
 * {
     margin: 0;

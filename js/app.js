@@ -49,6 +49,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindEvents();
     initTheme();
     
+    // Разогреваем GAS пока пользователь смотрит на интерфейс
+    api.warmUp();
+    
     // Initially hide admin buttons until we check role
     elements.nav.admin?.classList.add('hidden');
     document.getElementById('header-admin-btn')?.classList.add('hidden');
@@ -385,20 +388,20 @@ function renderRecords() {
                     ${record.material_name ? `<span>📦 ${escapeHtml(record.material_name)}</span>` : ''}
                     ${record.operation_name ? `<span>⚙️ ${escapeHtml(record.operation_name)}</span>` : ''}
                 </div>
-                <div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:4px; color:#555;">
+                <div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:4px; color:var(--text-primary);">
                     ${record.diameter ? `<span>⌀ ${record.diameter} мм</span>` : ''}
                     ${record.thickness ? `<span>📏 ${record.thickness} мм</span>` : ''}
                     ${record.bottom_number ? `<span>🔢 днище ${escapeHtml(record.bottom_number)}</span>` : ''}
                 </div>
                 ${record.defect_type_name ? `
-                    <div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:6px; color:#c62828;">
+                    <div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:6px; color:var(--danger);">
                         <span>⚠️ ${escapeHtml(record.defect_type_name)}</span>
                         ${record.defect_length ? `<span>📐 ${record.defect_length} мм</span>` : ''}
                         <span>🔢 ${record.defect_count || 1} шт</span>
                     </div>
                 ` : ''}
-                ${record.inspector ? `<div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:4px; color:#555;"><span>👤 ${escapeHtml(record.inspector)}</span></div>` : ''}
-                ${record.comments ? `<div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:4px; color:#666; font-style:italic;"><span>💬 ${escapeHtml(record.comments)}</span></div>` : ''}
+                ${record.inspector ? `<div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:4px; color:var(--text-primary);"><span>👤 ${escapeHtml(record.inspector)}</span></div>` : ''}
+                ${record.comments ? `<div class="record-row" style="display:flex; gap:12px; flex-wrap:wrap; font-size:13px; margin-top:4px; color:var(--text-primary); font-style:italic;"><span>💬 ${escapeHtml(record.comments)}</span></div>` : ''}
             </div>
         </div>
     `).join('');
@@ -526,13 +529,49 @@ async function handleSaveRecord(e) {
         if (state.editingRecord) {
             await api.updateRecord(state.editingRecord.id, data);
             showToast('Запись обновлена', 'success');
+            showView('records');
+            loadRecords();
         } else {
-            await api.createRecord(data);
+            // Оптимистичный UI: сразу показываем запись
+            const tempRecord = {
+                id: 'temp_' + Date.now(),
+                date: data.date,
+                order_number: data.orderNumber,
+                diameter: data.diameter,
+                thickness: data.thickness,
+                bottom_number: data.bottomNumber,
+                material_name: data.materialName,
+                operation_name: data.operationName,
+                defect_type_name: data.defectTypeName,
+                defect_length: data.defectLength,
+                defect_count: data.defectCount,
+                inspector: data.inspector,
+                comments: data.comments,
+                created_by: state.currentUser?.id,
+                created_at: new Date().toISOString(),
+                is_deleted: 0
+            };
+            state.records.unshift(tempRecord);
+            state.pagination.total += 1;
+            renderRecords();
+            updatePagination();
+            updateStats();
+            showView('records');
             showToast('Запись создана', 'success');
+            
+            // Отправляем на сервер в фоне
+            api.createRecord(data)
+                .then(() => loadRecords())
+                .catch(err => {
+                    // Удаляем временную запись при ошибке
+                    state.records = state.records.filter(r => r.id !== tempRecord.id);
+                    state.pagination.total = Math.max(0, state.pagination.total - 1);
+                    renderRecords();
+                    updatePagination();
+                    updateStats();
+                    showToast(err.message || 'Ошибка сохранения', 'error');
+                });
         }
-        
-        showView('records');
-        loadRecords();
     } catch (err) {
         if (err.message === 'OFFLINE') {
             showView('records');

@@ -8,6 +8,15 @@ class API {
     constructor() {
         this.baseURL = window.GAS_API_URL || '';
         this.accessToken = localStorage.getItem('accessToken');
+        this.warmedUp = false;
+    }
+
+    // Разогрев GAS (cold start ускорение)
+    warmUp() {
+        if (this.warmedUp || !this.baseURL) return;
+        this.warmedUp = true;
+        fetch(`${this.baseURL}?payload=${encodeURIComponent(JSON.stringify({action:'health'}))}`)
+            .catch(() => {});
     }
 
     // ===== Auth =====
